@@ -1,69 +1,39 @@
-import browserify from 'browserify';
-import { Readable } from 'stream';
-import puppeteer from 'puppeteer';
 import 'pptr-testing-library/extend';
+import puppeteer from 'puppeteer';
+import { createRenderTag } from './puppeteer-react-utils';
 
-describe(' TextEditor', () => {
+describe('TextEditor', () => {
   let browser;
-  let page;
+  let render;
 
   beforeAll(async () => {
     // TODO: remove this?
     // it's here so I have time to inspect the browser on errors
-    jest.setTimeout(10 * 1000);
+    const OPEN = false;
+    if (OPEN) {
+      const ONE_SECOND = 1000;
+      jest.setTimeout(10 * ONE_SECOND);
+    }
 
     browser = await puppeteer.launch({
-      headless: false,
-      slowMo: 10,
-      devtools: true,
+      headless: !OPEN,
+      slowMo: OPEN ? 10 : undefined,
+      devtools: OPEN,
     });
-    [page] = await browser.pages();
+
+    render = createRenderTag({
+      browser,
+      importString: "import TextEditor from './TextEditor';",
+    });
   });
 
   afterAll(async () => {
     await browser.close();
   });
 
-  beforeEach(async () => {
-    // TODO: be able to use this as harness for more than <TextEditor />
-    const scriptSrc = `import React from 'react';
-        import ReactDOM from 'react-dom';
-        import TextEditor from './TextEditor';
-    
-        const rootEl = document.createElement('div');
-        document.body.appendChild(rootEl);
-        ReactDOM.render(<TextEditor />, rootEl);
-        `;
-
-    const compiledScriptSrc = await new Promise((resolve, reject) => {
-      // prepare a stream containing the source for browserify
-      const stream = new Readable();
-      stream.push(scriptSrc); // add source content to stream
-      stream.push(null); // close stream
-
-      browserify(stream, {
-        basedir: __dirname, // browserify needs to know where the "file" exists
-      })
-        .transform('babelify', {
-          presets: ['@babel/preset-env', '@babel/preset-react'],
-        })
-        .bundle((error, buffer) => {
-          if (error) return reject(error);
-          resolve(buffer.toString());
-        });
-    });
-
-    const content = `<!DOCTYPE html>
-      <html>
-      <body>
-        <script>${compiledScriptSrc}</script>
-      </body>
-      </html>`;
-
-    await page.setContent(content);
-  });
-
   test('can type in the editor', async () => {
+    const page = await render`<TextEditor />`;
+
     const $document = await page.getDocument();
 
     const $editor = await $document.getByTestId('text-editor');
@@ -74,23 +44,23 @@ describe(' TextEditor', () => {
     await $editor.getByText('hello everyone');
   });
 
-  test.todo('onChange gives us the editor content');
-  // it('onChange gives us the editor content', async () => {
-  //   const onChange = jest.fn();
-  //   const utils = render(<TextEditor onChange={onChange} />);
+  test('onChange gives us the editor content', async () => {
+    const onChange = jest.fn();
 
-  //   const editorElement = await utils.getByTestId('text-editor');
+    const page = await render`<TextEditor onChange={${onChange}} />`;
 
-  //   // focus on the editor
-  //   fireEvent.click(editorElement);
+    const $document = await page.getDocument();
 
-  //   // type something
-  //   fireEvent.blur(editorElement, {
-  //     target: { textContent: 'hello everyone' },
-  //   });
+    const $editor = await $document.getByTestId('text-editor');
 
-  //   expect(onChange).toHaveBeenCalledWith([
-  //     { type: 'paragraph', children: [{ text: 'hello everyone' }] },
-  //   ]);
-  // });
+    // type something
+    await $editor.type('hello everyone');
+
+    // blur the editor
+    await page.focus('body');
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      { children: [{ text: 'hello everyone' }], type: 'paragraph' },
+    ]);
+  });
 });

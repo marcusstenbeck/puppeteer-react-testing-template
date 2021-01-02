@@ -13,7 +13,6 @@ const TextEditor = ({ onChange }) => {
 
   const handleOnChange = useCallback(
     (newValue) => {
-      console.log(newValue);
       setValue(newValue);
       if (onChange) onChange(newValue);
     },
